@@ -1,6 +1,7 @@
 package gremcos
 
 import (
+	"encoding/json"
 	"fmt"
 	"testing"
 	"time"
@@ -12,6 +13,75 @@ import (
 	mock_interfaces "github.com/supplyon/gremcos/test/mocks/interfaces"
 	mock_metrics "github.com/supplyon/gremcos/test/mocks/metrics"
 )
+
+type payload struct {
+	Data string `json:"data,omitempty"`
+}
+
+func newResponse(requestID string, payload payload, code int) (interfaces.Response, []byte, error) {
+	rawJSON, err := json.Marshal(payload)
+	if err != nil {
+		return interfaces.Response{}, nil, err
+	}
+
+	resp := interfaces.Response{
+		RequestID: requestID,
+		Status: interfaces.Status{
+			Code: code,
+		},
+		Result: interfaces.Result{Data: rawJSON},
+	}
+
+	data, err := json.Marshal(resp)
+	if err != nil {
+		return interfaces.Response{}, nil, err
+	}
+
+	return resp, data, nil
+}
+
+func TestExecute(t *testing.T) {
+	// GIVEN
+	mockCtrl := gomock.NewController(t)
+	defer mockCtrl.Finish()
+	mockedDialer := mock_interfaces.NewMockDialer(mockCtrl)
+	metrics, _ := NewMockedMetrics(mockCtrl)
+
+	idleTimeout := time.Second * 12
+	maxActiveConnections := 10
+	username := "abcd"
+	password := "xyz"
+
+	cosmos, err := New("ws://host",
+		ConnectionIdleTimeout(idleTimeout),
+		NumMaxActiveConnections(maxActiveConnections),
+		WithAuth(username, password),
+		withMetrics(metrics),
+	)
+	cosmos.dialer = mockedDialer
+
+	require.NoError(t, err)
+	require.NotNil(t, cosmos)
+	mockedDialer.EXPECT().Connect().Return(nil)
+	mockedDialer.EXPECT().IsConnected().Return(true)
+
+	_, rawResponse, _ := newResponse("ABCD", payload{Data: "HELLO"}, interfaces.StatusSuccess)
+	mockedDialer.EXPECT().Read().Return(1, rawResponse, nil).AnyTimes()
+	mockedDialer.EXPECT().Write(gomock.Any()).Return(nil)
+	mockedDialer.EXPECT().Ping().Return(nil)
+
+	mockedDialer.EXPECT().Close().Return(nil)
+
+	// WHEN
+	responses, err := cosmos.Execute("g.V()")
+
+	// THEN
+	assert.NoError(t, err)
+	assert.NotEmpty(t, responses)
+
+	err = cosmos.Stop()
+	assert.NoError(t, err)
+}
 
 func TestNew(t *testing.T) {
 	// GIVEN
