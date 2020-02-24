@@ -3,6 +3,7 @@ package gremcos
 import (
 	"encoding/json"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -49,6 +50,72 @@ func newResponse(requestID string, payload payload, code int) (interfaces.Respon
 	return resp, data, nil
 }
 
+func TestExecuteParallel(t *testing.T) {
+	// GIVEN
+	mockCtrl := gomock.NewController(t)
+	defer mockCtrl.Finish()
+	mockedDialer := mock_interfaces.NewMockDialer(mockCtrl)
+	metrics, metricMocks := NewMockedMetrics(mockCtrl)
+
+	idleTimeout := time.Second * 12
+	maxActiveConnections := 10
+	username := "abcd"
+	password := "xyz"
+	requestID, err := uuid.NewV4()
+	require.NoError(t, err)
+
+	cosmos, err := New("ws://host",
+		ConnectionIdleTimeout(idleTimeout),
+		NumMaxActiveConnections(maxActiveConnections),
+		WithAuth(username, password),
+		withMetrics(metrics),
+	)
+	require.NoError(t, err)
+	require.NotNil(t, cosmos)
+	cosmos.dialer = mockedDialer
+	cosmos.generateUUID = predefinedUUIDGenerator(requestID)
+
+	numParallelExecuteCalls := 2
+
+	mockedDialer.EXPECT().Connect().Return(nil).Times(numParallelExecuteCalls)
+	mockedDialer.EXPECT().IsConnected().Return(true)
+	mockCount200 := mock_metrics.NewMockCounter(mockCtrl)
+	mockCount200.EXPECT().Inc()
+	metricMocks.statusCodeTotal.EXPECT().WithLabelValues("200").Return(mockCount200)
+	metricMocks.serverTimePerQueryResponseAvgMS.EXPECT().Set(float64(0))
+	metricMocks.serverTimePerQueryMS.EXPECT().Set(float64(0))
+	metricMocks.requestChargePerQueryResponseAvg.EXPECT().Set(float64(0))
+	metricMocks.requestChargePerQuery.EXPECT().Set(float64(0))
+	metricMocks.requestChargeTotal.EXPECT().Add(float64(0))
+	metricMocks.retryAfterMS.EXPECT().Set(float64(0))
+
+	_, rawResponse, _ := newResponse(requestID.String(), payload{Data: "HELLO"}, interfaces.StatusSuccess)
+	mockedDialer.EXPECT().Read().DoAndReturn(func() {
+		time.Sleep(time.Millisecond * 100)
+	}).Return(1, rawResponse, nil).Times(2) // one call for the read of the data and the second for the next blocking read
+	mockedDialer.EXPECT().Write(gomock.Any()).Return(nil)
+	mockedDialer.EXPECT().Close().Return(nil)
+
+	wg := sync.WaitGroup{}
+	wg.Add(numParallelExecuteCalls)
+	for i := 0; i < numParallelExecuteCalls; i++ {
+		go func() {
+			defer wg.Done()
+			// WHEN
+			responses, err := cosmos.Execute("g.V()")
+
+			// THEN
+			assert.NoError(t, err)
+			assert.NotEmpty(t, responses)
+		}()
+	}
+
+	// CLEANUP
+	wg.Wait()
+	err = cosmos.Stop()
+	assert.NoError(t, err)
+}
+
 func TestExecute(t *testing.T) {
 	// GIVEN
 	mockCtrl := gomock.NewController(t)
@@ -69,11 +136,11 @@ func TestExecute(t *testing.T) {
 		WithAuth(username, password),
 		withMetrics(metrics),
 	)
+	require.NoError(t, err)
+	require.NotNil(t, cosmos)
 	cosmos.dialer = mockedDialer
 	cosmos.generateUUID = predefinedUUIDGenerator(requestID)
 
-	require.NoError(t, err)
-	require.NotNil(t, cosmos)
 	mockedDialer.EXPECT().Connect().Return(nil)
 	mockedDialer.EXPECT().IsConnected().Return(true)
 	mockCount200 := mock_metrics.NewMockCounter(mockCtrl)
