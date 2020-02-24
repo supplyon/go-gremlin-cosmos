@@ -3,8 +3,6 @@ package gremcos
 import (
 	"encoding/base64"
 	"encoding/json"
-
-	"github.com/gofrs/uuid"
 )
 
 // MimeType used for communication with the gremlin server.
@@ -19,15 +17,10 @@ type request struct {
 }
 
 // prepareRequest packages a query and binding into the format that Gremlin Server accepts
-func prepareRequest(query string) (request, string, error) {
-	var uuID uuid.UUID
-	uuID, err := uuid.NewV4()
-	if err != nil {
-		return request{}, "", err
-	}
+func prepareRequest(requestID, query string) (request, string, error) {
 
 	req := request{}
-	req.RequestID = uuID.String()
+	req.RequestID = requestID
 	req.Op = "eval"
 	req.Processor = ""
 
@@ -39,14 +32,10 @@ func prepareRequest(query string) (request, string, error) {
 }
 
 // prepareRequest packages a query and binding into the format that Gremlin Server accepts
-func prepareRequestWithBindings(query string, bindings, rebindings map[string]string) (request, string, error) {
-	uuID, err := uuid.NewV4()
-	if err != nil {
-		return request{}, "", err
-	}
+func prepareRequestWithBindings(requestID, query string, bindings, rebindings map[string]string) (request, string, error) {
 
 	req := request{}
-	req.RequestID = uuID.String()
+	req.RequestID = requestID
 	req.Op = "eval"
 	req.Processor = ""
 

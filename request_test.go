@@ -15,11 +15,13 @@ func TestRequestPreparation(t *testing.T) {
 	query := "g.V(x)"
 	bindings := map[string]string{"x": "10"}
 	rebindings := map[string]string{}
-	req, id, err := prepareRequestWithBindings(query, bindings, rebindings)
+	requestID := "ABCDEFG"
+
+	req, _, err := prepareRequestWithBindings(requestID, query, bindings, rebindings)
 	require.NoError(t, err)
 
 	expectedRequest := request{
-		RequestID: id,
+		RequestID: requestID,
 		Op:        "eval",
 		Processor: "",
 		Args: map[string]interface{}{
@@ -132,7 +134,8 @@ func TestAuthRequestPreparation(t *testing.T) {
 
 func TestPrepareRequest(t *testing.T) {
 	query := "g.V()"
-	testRequest, id, err := prepareRequest(query)
+	requestID := "ABCDEFG"
+	testRequest, id, err := prepareRequest(requestID, query)
 	require.NoError(t, err)
 
 	assert.NotEmpty(t, id)

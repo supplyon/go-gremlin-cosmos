@@ -31,6 +31,10 @@ type Cosmos struct {
 	metrics *Metrics
 
 	wg sync.WaitGroup
+
+	// generateUUID is a function that generates a new UUID with each call
+	// this is needed to produce unique request id's
+	generateUUID uuidGeneratorFunc
 }
 
 // Option is the struct for defining optional parameters for Cosmos
@@ -92,6 +96,7 @@ func New(host string, options ...Option) (*Cosmos, error) {
 		numMaxActiveConnections: 10,
 		connectionIdleTimeout:   time.Second * 30,
 		metrics:                 nil,
+		generateUUID:            randomUUID,
 	}
 
 	for _, opt := range options {
@@ -135,11 +140,10 @@ func New(host string, options ...Option) (*Cosmos, error) {
 
 // dial creates new connections. It is called by the pool in case a new connection is demanded.
 func (c *Cosmos) dial() (interfaces.QueryExecutor, error) {
-	return Dial(c.dialer, c.errorChannel, SetAuth(c.username, c.password), PingInterval(time.Second*30))
+	return Dial(c.dialer, c.errorChannel, SetAuth(c.username, c.password), PingInterval(time.Second*30), uuidGenerator(c.generateUUID))
 }
 
 func (c *Cosmos) Execute(query string) ([]interfaces.Response, error) {
-
 	responses, err := c.pool.Execute(query)
 
 	// try to investigate the responses and to find out if we can find more specific error information

@@ -56,6 +56,9 @@ type client struct {
 	// token to ensure that the resources are closed only once
 	// even if client.Close() is called multiple times
 	once sync.Once
+
+	// generateUUID is a function that generates a new UUID with each call
+	generateUUID uuidGeneratorFunc
 }
 
 // auth is the container for authentication data of Client
@@ -81,6 +84,12 @@ func PingInterval(interval time.Duration) clientOption {
 	}
 }
 
+func uuidGenerator(generateUUID uuidGeneratorFunc) clientOption {
+	return func(c *client) {
+		c.generateUUID = generateUUID
+	}
+}
+
 func newClient(dialer interfaces.Dialer, options ...clientOption) *client {
 	client := &client{
 		conn:                   dialer,
@@ -91,6 +100,7 @@ func newClient(dialer interfaces.Dialer, options ...clientOption) *client {
 		pingInterval:           60 * time.Second,
 		quitChannel:            make(chan struct{}),
 		lastError:              nil,
+		generateUUID:           randomUUID,
 	}
 
 	for _, opt := range options {
@@ -136,10 +146,15 @@ func (c *client) executeRequest(query string, bindings, rebindings *map[string]s
 	var id string
 	var err error
 
+	uuid, err := c.generateUUID()
+	if err != nil {
+		return nil, err
+	}
+
 	if bindings != nil && rebindings != nil {
-		req, id, err = prepareRequestWithBindings(query, *bindings, *rebindings)
+		req, id, err = prepareRequestWithBindings(uuid.String(), query, *bindings, *rebindings)
 	} else {
-		req, id, err = prepareRequest(query)
+		req, id, err = prepareRequest(uuid.String(), query)
 	}
 
 	if err != nil {
@@ -167,10 +182,16 @@ func (c *client) executeRequest(query string, bindings, rebindings *map[string]s
 func (c *client) executeAsync(query string, bindings, rebindings *map[string]string, responseChannel chan interfaces.AsyncResponse) (err error) {
 	var req request
 	var id string
+
+	uuid, err := c.generateUUID()
+	if err != nil {
+		return err
+	}
+
 	if bindings != nil && rebindings != nil {
-		req, id, err = prepareRequestWithBindings(query, *bindings, *rebindings)
+		req, id, err = prepareRequestWithBindings(uuid.String(), query, *bindings, *rebindings)
 	} else {
-		req, id, err = prepareRequest(query)
+		req, id, err = prepareRequest(uuid.String(), query)
 	}
 	if err != nil {
 		return
