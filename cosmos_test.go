@@ -22,8 +22,9 @@ type payload struct {
 
 // predefinedUUIDGenerator is a helper that satisfies the uuidGeneratorFunc signature
 // and returns the specified uuid
-var predefinedUUIDGenerator = func(requestID uuid.UUID) uuidGeneratorFunc {
+var predefinedUUIDGenerator = func(requestID []uuid.UUID) uuidGeneratorFunc {
 	return func() (uuid.UUID, error) {
+		// FIXME: Return the requestID using an index into the given array of requestIDs
 		return requestID, nil
 	}
 }
@@ -61,8 +62,14 @@ func TestExecuteParallel(t *testing.T) {
 	maxActiveConnections := 10
 	username := "abcd"
 	password := "xyz"
-	requestID, err := uuid.NewV4()
-	require.NoError(t, err)
+
+	numParallelExecuteCalls := 2
+	var requestIDs []uuid.UUID
+	for i := 0; i < numParallelExecuteCalls; i++ {
+		requestID, err := uuid.NewV4()
+		require.NoError(t, err)
+		requestIDs = append(requestIDs, requestID)
+	}
 
 	cosmos, err := New("ws://host",
 		ConnectionIdleTimeout(idleTimeout),
@@ -73,12 +80,10 @@ func TestExecuteParallel(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, cosmos)
 	cosmos.dialer = mockedDialer
-	cosmos.generateUUID = predefinedUUIDGenerator(requestID)
-
-	numParallelExecuteCalls := 2
+	cosmos.generateUUID = predefinedUUIDGenerator(requestIDs)
 
 	mockedDialer.EXPECT().Connect().Return(nil).Times(numParallelExecuteCalls)
-	mockedDialer.EXPECT().IsConnected().Return(true)
+	mockedDialer.EXPECT().IsConnected().Return(true).Times(numParallelExecuteCalls)
 	mockCount200 := mock_metrics.NewMockCounter(mockCtrl)
 	mockCount200.EXPECT().Inc()
 	metricMocks.statusCodeTotal.EXPECT().WithLabelValues("200").Return(mockCount200)
@@ -91,8 +96,8 @@ func TestExecuteParallel(t *testing.T) {
 
 	_, rawResponse, _ := newResponse(requestID.String(), payload{Data: "HELLO"}, interfaces.StatusSuccess)
 	mockedDialer.EXPECT().Read().DoAndReturn(func() {
-		time.Sleep(time.Millisecond * 100)
-	}).Return(1, rawResponse, nil).Times(2) // one call for the read of the data and the second for the next blocking read
+		time.Sleep(time.Millisecond * 10)
+	}).Return(1, rawResponse, nil).Times(numParallelExecuteCalls + 1) // one call for the read of the data and the second for the next blocking read
 	mockedDialer.EXPECT().Write(gomock.Any()).Return(nil)
 	mockedDialer.EXPECT().Close().Return(nil)
 

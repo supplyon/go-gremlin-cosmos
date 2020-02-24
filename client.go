@@ -306,19 +306,6 @@ func (c *client) Close() error {
 		// notify the workers to stop working
 		close(c.quitChannel)
 
-		// clean up all response channels in order to unblock pending responses
-		c.responseNotifier.Range(func(key, value interface{}) bool {
-			channel := value.(chan error)
-			close(channel)
-			return true
-		})
-
-		c.responseStatusNotifier.Range(func(key, value interface{}) bool {
-			channel := value.(chan int)
-			close(channel)
-			return true
-		})
-
 		if c.conn == nil {
 			err = fmt.Errorf("Connection is nil")
 		} else {
