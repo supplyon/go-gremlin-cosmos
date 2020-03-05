@@ -58,6 +58,28 @@ func NewMockedMetrics(mockCtrl *gomock.Controller) (*Metrics, *MetricsMocks) {
 	return metrics, mocks
 }
 
+func NewStubbedMetrics() *Metrics {
+	mStatusCodeTotal := mock_metrics.NewStubCounterVec()
+	mRetryAfterMS := mock_metrics.NewStubGauge()
+	mRequestChargeTotal := mock_metrics.NewStubCounter()
+	mRequestChargePerQuery := mock_metrics.NewStubGauge()
+	mRequestChargePerQueryResponseAvg := mock_metrics.NewStubGauge()
+	mServerTimePerQueryMS := mock_metrics.NewStubGauge()
+	mServerTimePerQueryResponseAvgMS := mock_metrics.NewStubGauge()
+
+	metrics := &Metrics{
+		statusCodeTotal:                  mStatusCodeTotal,
+		retryAfterMS:                     mRetryAfterMS,
+		requestChargeTotal:               mRequestChargeTotal,
+		requestChargePerQuery:            mRequestChargePerQuery,
+		requestChargePerQueryResponseAvg: mRequestChargePerQueryResponseAvg,
+		serverTimePerQueryMS:             mServerTimePerQueryMS,
+		serverTimePerQueryResponseAvgMS:  mServerTimePerQueryResponseAvgMS,
+	}
+
+	return metrics
+}
+
 func Test_NewMetrics(t *testing.T) {
 	metrics := NewMetrics("gremcos")
 	assert.NotNil(t, metrics.statusCodeTotal)
